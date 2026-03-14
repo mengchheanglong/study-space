@@ -4,6 +4,6 @@
   "scripts": {
     "dev": "powershell -ExecutionPolicy Bypass -File .\\start-studyspace.ps1",
     "dev:dry-run": "powershell -ExecutionPolicy Bypass -File .\\start-studyspace.ps1 -DryRun",
-    "dev:studio": "npm run dev --prefix .\\studio"
+    "dev:web-app": "npm run dev --prefix .\\web-app"
   }
 }

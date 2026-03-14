@@ -5,12 +5,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $workspaceRoot = $PSScriptRoot
-$studioRoot = Join-Path $workspaceRoot "studio"
-$transcriptWhisperRoot = Join-Path $workspaceRoot "labs\\transcript-whisper"
+$webAppRoot = Join-Path $workspaceRoot "web-app"
+$transcriptWhisperRoot = Join-Path $workspaceRoot "services\\transcript-whisper"
 $transcriptWhisperVenvPython = Join-Path $transcriptWhisperRoot ".venv\\Scripts\\python.exe"
-$localRagRoot = Join-Path $workspaceRoot "labs\\local-rag-ai-assistant"
+$localRagRoot = Join-Path $workspaceRoot "services\\local-rag-ai-assistant"
 $localRagVenvPython = Join-Path $localRagRoot ".venv\\Scripts\\python.exe"
-$studioEnvLocal = Join-Path $studioRoot ".env.local"
+$webAppEnvLocal = Join-Path $webAppRoot ".env.local"
 $transcriptWhisperApiBaseUrl = "http://127.0.0.1:8000/api/v1"
 $localRagApiBaseUrl = "http://127.0.0.1:9999"
 $codeAssistantBaseUrl = "http://127.0.0.1:11434"
@@ -149,11 +149,11 @@ function Resolve-FfmpegBinary {
     return $null
 }
 
-Write-Step "Preparing Studio environment"
-Ensure-EnvLine -Path $studioEnvLocal -Key "TRANSCRIPT_WHISPER_API_BASE_URL" -Value $transcriptWhisperApiBaseUrl
-Ensure-EnvLine -Path $studioEnvLocal -Key "LOCAL_RAG_API_BASE_URL" -Value $localRagApiBaseUrl
-Ensure-EnvLine -Path $studioEnvLocal -Key "LOCAL_CODE_ASSISTANT_BASE_URL" -Value $codeAssistantBaseUrl
-Ensure-EnvLine -Path $studioEnvLocal -Key "LOCAL_CODE_ASSISTANT_MODEL" -Value $codeAssistantModel
+Write-Step "Preparing Web App environment"
+Ensure-EnvLine -Path $webAppEnvLocal -Key "TRANSCRIPT_WHISPER_API_BASE_URL" -Value $transcriptWhisperApiBaseUrl
+Ensure-EnvLine -Path $webAppEnvLocal -Key "LOCAL_RAG_API_BASE_URL" -Value $localRagApiBaseUrl
+Ensure-EnvLine -Path $webAppEnvLocal -Key "LOCAL_CODE_ASSISTANT_BASE_URL" -Value $codeAssistantBaseUrl
+Ensure-EnvLine -Path $webAppEnvLocal -Key "LOCAL_CODE_ASSISTANT_MODEL" -Value $codeAssistantModel
 
 if (-not (Test-Path $transcriptWhisperVenvPython)) {
     Write-Step "Creating transcript-whisper virtual environment"
@@ -264,7 +264,7 @@ if ($ffmpegBinary) {
 
 $transcriptWhisperCommand = $transcriptWhisperCommandPrefix + "& `"$transcriptWhisperVenvPython`" -m uvicorn transcript_whisper.main:app --host 127.0.0.1 --port 8000 --reload"
 $localRagCommand = "& `"$localRagVenvPython`" -m uvicorn api:app --host 127.0.0.1 --port 9999 --reload"
-$studioCommand = "npm run dev"
+$webAppCommand = "npm run dev"
 
 Write-Step "Launching Transcript Whisper"
 Start-ServiceWindow -Title "Transcript Whisper" -WorkingDirectory $transcriptWhisperRoot -Command $transcriptWhisperCommand
@@ -272,10 +272,10 @@ Start-ServiceWindow -Title "Transcript Whisper" -WorkingDirectory $transcriptWhi
 Write-Step "Launching Local RAG"
 Start-ServiceWindow -Title "Local RAG" -WorkingDirectory $localRagRoot -Command $localRagCommand
 
-Write-Step "Launching Studyspace Studio"
-Start-ServiceWindow -Title "Studyspace Studio" -WorkingDirectory $studioRoot -Command $studioCommand
+Write-Step "Launching Studyspace Web App"
+Start-ServiceWindow -Title "Studyspace Web App" -WorkingDirectory $webAppRoot -Command $webAppCommand
 
 Write-Step "Studyspace startup complete"
-Write-Host "Studio: http://localhost:3000/dashboard"
+Write-Host "Web App: http://localhost:3000/dashboard"
 Write-Host "Transcript Whisper API: $transcriptWhisperApiBaseUrl"
 Write-Host "Local RAG API: $localRagApiBaseUrl"

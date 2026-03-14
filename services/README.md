@@ -1,4 +1,4 @@
-# Labs
+# Services
 
 This directory contains backend services used by Studyspace.
 

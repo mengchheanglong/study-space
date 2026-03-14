@@ -1,9 +1,9 @@
 # Studyspace
 
 Studyspace is a local-first learning workspace that combines:
-- `studio`: a Next.js dashboard/UI for study workflows
-- `labs/local-rag-ai-assistant`: FastAPI + LangChain + Ollama RAG backend
-- `labs/transcript-whisper`: FastAPI Whisper transcription service
+- `web-app`: Next.js dashboard/UI for study workflows
+- `services/local-rag-ai-assistant`: FastAPI + LangChain + Ollama RAG backend
+- `services/transcript-whisper`: FastAPI Whisper transcription service
 
 ## Project Status
 
@@ -16,7 +16,7 @@ Studyspace is a local-first learning workspace that combines:
 
 ## Architecture
 
-- Frontend/UI: `studio` (Next.js 16 + React + TypeScript)
+- Frontend/UI: `web-app` (Next.js 16 + React + TypeScript)
 - Backends:
   - Transcript API on `127.0.0.1:8000`
   - Local RAG API on `127.0.0.1:9999`
@@ -27,10 +27,10 @@ Studyspace is a local-first learning workspace that combines:
 
 - `start-studyspace.ps1`: local stack launcher
 - `studyspace.code-workspace`: VS Code workspace
-- `studio/`: main web app
-- `labs/`: backend services and supporting labs
-- `labs/local-rag-ai-assistant/my_docs/`: local document input folder (kept empty in git)
-- `labs/local-rag-ai-assistant/study_collections/`: collection metadata + generated artifacts (runtime data)
+- `web-app/`: main web app
+- `services/`: backend services
+- `services/local-rag-ai-assistant/my_docs/`: local document input folder (kept empty in git)
+- `services/local-rag-ai-assistant/study_collections/`: collection metadata + generated artifacts (runtime data)
 
 ## Prerequisites
 
@@ -41,9 +41,9 @@ Studyspace is a local-first learning workspace that combines:
 
 ## Quick Start
 
-1. Install Studio dependencies:
+1. Install Web App dependencies:
 ```powershell
-cd studio
+cd web-app
 npm install
 cd ..
 ```
@@ -59,7 +59,7 @@ npm run dev
 ```
 
 4. Open:
-- Studio: `http://localhost:3000/dashboard`
+- Web App: `http://localhost:3000/dashboard`
 - Transcript API docs: `http://127.0.0.1:8000/docs`
 - Local RAG API health: `http://127.0.0.1:9999/health`
 
@@ -70,7 +70,7 @@ npm run dev
 npm run dev
 ```
 
-This runs `start-studyspace.ps1`, prepares local env files, and launches Studio + both backend services.
+This runs `start-studyspace.ps1`, prepares local env files, and launches the Web App + both backend services.
 
 ### Option B: VS Code workspace flow
 
@@ -80,27 +80,27 @@ This runs `start-studyspace.ps1`, prepares local env files, and launches Studio 
 
 ## Verification
 
-Studio checks:
+Web App checks:
 ```powershell
-cd studio
+cd web-app
 npm run lint
 npm run typecheck
 ```
 
 Python syntax checks:
 ```powershell
-python -m compileall -q labs/transcript-whisper/src
-python -m compileall -q labs/local-rag-ai-assistant
+python -m compileall -q services/transcript-whisper/src
+python -m compileall -q services/local-rag-ai-assistant
 ```
 
 ## Environment Notes
 
-- `start-studyspace.ps1` writes `studio/.env.local` during runtime bootstrap.
+- `start-studyspace.ps1` writes `web-app/.env.local` during runtime bootstrap.
 - IDE codebot defaults to Qwen via `LOCAL_CODE_ASSISTANT_MODEL=qwen2.5-coder:3b`.
 - RAG model overrides:
   - `OLLAMA_EMBED_MODEL`
   - `OLLAMA_LLM_MODEL`
-- Transcript service overrides are documented in `labs/transcript-whisper/.env.example`.
+- Transcript service overrides are documented in `services/transcript-whisper/.env.example`.
 
 ## Known Limitations
 

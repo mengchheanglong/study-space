@@ -1,5 +1,5 @@
 {
-  "venvPath": "labs/local-rag-ai-assistant",
+  "venvPath": "services/local-rag-ai-assistant",
   "venv": ".venv",
   "pythonVersion": "3.13",
   "pythonPlatform": "Windows",
@@ -8,15 +8,15 @@
   "exclude": [
     "**/.venv",
     "**/__pycache__",
-    "labs/local-rag-ai-assistant/chroma_db",
-    "labs/local-rag-ai-assistant/frontend",
-    "studio"
+    "services/local-rag-ai-assistant/chroma_db",
+    "services/local-rag-ai-assistant/frontend",
+    "web-app"
   ],
   "executionEnvironments": [
     {
-      "root": "labs/local-rag-ai-assistant",
+      "root": "services/local-rag-ai-assistant",
       "extraPaths": [
-        "labs/local-rag-ai-assistant"
+        "services/local-rag-ai-assistant"
       ]
     }
   ]

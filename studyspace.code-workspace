@@ -1,16 +1,16 @@
 {
   "folders": [
     {
-      "name": "studio",
-      "path": "studio"
+      "name": "web-app",
+      "path": "web-app"
     },
     {
       "name": "local-rag-ai-assistant",
-      "path": "labs/local-rag-ai-assistant"
+      "path": "services/local-rag-ai-assistant"
     },
     {
       "name": "transcript-whisper",
-      "path": "labs/transcript-whisper"
+      "path": "services/transcript-whisper"
     }
   ],
   "settings": {

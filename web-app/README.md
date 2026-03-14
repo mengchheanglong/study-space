@@ -1,6 +1,6 @@
-# Studio
+# Web App
 
-`studio` is the Next.js dashboard frontend for Studyspace.
+`web-app` is the Next.js dashboard frontend for Studyspace.
 
 ## Features
 
@@ -29,7 +29,7 @@ npm run typecheck
 
 ## Backend Integration
 
-Studio expects these local endpoints:
+Web App expects these local endpoints:
 - Transcript service: `http://127.0.0.1:8000/api/v1`
 - Local RAG service: `http://127.0.0.1:9999`
 - IDE codebot (Ollama): `http://127.0.0.1:11434` using Qwen by default (`qwen2.5-coder:3b`)
