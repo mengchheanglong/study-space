@@ -91,7 +91,7 @@ type PendingEdit = {
   description: string;
 };
 
-
+type CodeRunResult = {
   runtime: "python" | "javascript";
   command: string;
   stdout: string;
@@ -335,7 +335,7 @@ function persistChatMessages(fileId: string, messages: AssistantMessage[]) {
   }
 }
 
-
+function createWorkspaceFile(name: string, content: string = ""): PracticeFile {
   return {
     id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
@@ -343,6 +343,7 @@ function persistChatMessages(fileId: string, messages: AssistantMessage[]) {
     content,
   };
 }
+
 
 export default function IdeWorkspaceClient() {
   const [ideHealth, setIdeHealth] = useState<ServiceState>(INITIAL_SERVICE_STATE);
