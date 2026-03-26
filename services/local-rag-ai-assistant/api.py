@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 
@@ -45,7 +46,7 @@ from config import (
     LLM_MODEL,
     MAX_UPLOAD_BYTES,
 )
-from ingest import ingest_documents
+from ingest import ingest_documents, ingest_file_incremental, remove_source_from_store
 from rag_pipeline import build_rag_runtime
 from rag_utils import normalize_question, retrieve_context, retrieve_documents
 
@@ -270,6 +271,40 @@ def reingest_collection(collection_id: str) -> int:
         qdrant_collection=get_collection_vector_name(collection_id),
         reset_store=True,
     )
+
+
+def ingest_file_into_collection(collection_id: str, file_path: str) -> int:
+    """Incrementally add (or replace) a single file in a collection's vector store.
+
+    This avoids a full collection re-index when only one file has changed.
+    The collection runtime cache is invalidated so the next query picks up
+    the new vectors.
+    """
+    clear_collection_runtime(collection_id)
+    return ingest_file_incremental(
+        file_path=file_path,
+        qdrant_dir=str(get_collection_qdrant_dir(collection_id)),
+        qdrant_collection=get_collection_vector_name(collection_id),
+    )
+
+
+def remove_file_from_collection(collection_id: str, file_path: str) -> int:
+    """Remove all vectors for a single source file from the collection's vector store.
+
+    Returns the number of vectors deleted.  Falls back to a full re-index
+    when the filter-based delete fails (e.g. collection is corrupt).
+    """
+    clear_collection_runtime(collection_id)
+    deleted = remove_source_from_store(
+        source_path=file_path,
+        qdrant_dir=str(get_collection_qdrant_dir(collection_id)),
+        qdrant_collection=get_collection_vector_name(collection_id),
+    )
+    if deleted == 0:
+        # remove_source_from_store already logged a warning; fall back to a
+        # full reindex so the document is definitely gone.
+        reingest_collection(collection_id)
+    return deleted
 
 
 # ── Artifact helpers ──────────────────────────────────────────────
@@ -611,6 +646,94 @@ async def chat_endpoint(req: ChatRequest):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/chat/stream")
+async def chat_stream_endpoint(req: ChatRequest):
+    """Server-Sent Events streaming variant of /chat.
+
+    Emits newline-delimited SSE events::
+
+        data: {"token": "Hello"}\n\n
+        data: {"token": " world"}\n\n
+        data: {"done": true, "sources": [...]}\n\n
+
+    A final ``{"done": true, "sources": [...]}`` event signals completion.
+    Errors are emitted as ``{"error": "message"}`` followed by stream close.
+    """
+    import json
+
+    ensure_collection_has_documents(req.collection_id)
+
+    chat_history: list[HumanMessage | AIMessage] = []
+    for msg in req.history:
+        if msg.role == "user":
+            chat_history.append(HumanMessage(content=msg.content))
+        else:
+            chat_history.append(AIMessage(content=msg.content))
+
+    async def event_generator():
+        try:
+            runtime = get_collection_runtime(req.collection_id)
+
+            if req.source_names:
+                source_docs = retrieve_documents(
+                    req.message, runtime["retriever"], req.source_names
+                )
+                if not source_docs:
+                    yield f"data: {json.dumps({'error': 'No matching context was found in the selected sources.'})}\n\n"
+                    return
+                context = "\n\n---\n\n".join(doc.page_content for doc in source_docs)
+                prompt_messages = runtime["prompt"].format_messages(
+                    context=context,
+                    chat_history=chat_history,
+                    input=normalize_question(req.message),
+                )
+                for chunk in runtime["llm"].stream(prompt_messages):
+                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if token:
+                        yield f"data: {json.dumps({'token': token})}\n\n"
+            else:
+                # Use the history-aware retriever to rewrite the question,
+                # then stream the LLM answer token by token.
+                history_aware = runtime["rag_chain"].steps[0]  # history_aware_retriever
+                retriever_chain = runtime["rag_chain"].steps[1]  # combine_docs_chain
+
+                source_docs = await history_aware.ainvoke(
+                    {"input": req.message, "chat_history": chat_history}
+                )
+                if not source_docs:
+                    yield f"data: {json.dumps({'error': 'No matching context was found in the collection.'})}\n\n"
+                    return
+
+                context = "\n\n---\n\n".join(
+                    doc.page_content for doc in source_docs
+                )
+                prompt_messages = runtime["prompt"].format_messages(
+                    context=context,
+                    chat_history=chat_history,
+                    input=normalize_question(req.message),
+                )
+                for chunk in runtime["llm"].stream(prompt_messages):
+                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if token:
+                        yield f"data: {json.dumps({'token': token})}\n\n"
+
+            yield f"data: {json.dumps({'done': True, 'sources': [s.model_dump() for s in build_source_references(source_docs)]})}\n\n"
+        except HTTPException as exc:
+            yield f"data: {json.dumps({'error': exc.detail})}\n\n"
+        except Exception as exc:
+            logger.exception("Streaming chat request failed")
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.post("/artifacts", response_model=ArtifactResponse)
 async def generate_artifact(req: ArtifactRequest):
     ensure_collection_has_documents(req.collection_id)
@@ -686,7 +809,7 @@ async def upload_document(
                 )
 
         file_path.write_bytes(content)
-        chunks_added = reingest_collection(collection_id)
+        chunks_added = ingest_file_into_collection(collection_id, str(file_path))
 
         return UploadResponse(
             filename=filename,
@@ -718,7 +841,7 @@ async def delete_collection_document(collection_id: str, document_name: str):
         raise HTTPException(status_code=404, detail="Document not found.")
 
     path.unlink()
-    reingest_collection(collection_id)
+    remove_file_from_collection(collection_id, str(path))
     documents = list_available_documents(collection_id)
     return DocumentListResponse(documents=[DocumentRecord(**item) for item in documents])
 

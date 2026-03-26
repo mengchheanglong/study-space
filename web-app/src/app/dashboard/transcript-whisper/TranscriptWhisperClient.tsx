@@ -109,6 +109,8 @@ export default function TranscriptWhisperClient() {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [processResult, setProcessResult] = useState<ProcessResult | null>(null);
   const [progress, setProgress] = useState<ProgressState>(IDLE_PROGRESS);
+  const [ragImporting, setRagImporting] = useState(false);
+  const [ragImportMessage, setRagImportMessage] = useState<string | null>(null);
   const uploadRequestRef = useRef<XMLHttpRequest | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -423,6 +425,30 @@ export default function TranscriptWhisperClient() {
       eventSourceRef.current = null;
       setSubmitting(false);
       void refreshHealth();
+    }
+  }
+
+  async function importTranscriptToRag(text: string) {
+    if (!text.trim()) return;
+    setRagImporting(true);
+    setRagImportMessage(null);
+    try {
+      const blob = new Blob([text], { type: "text/plain" });
+      const formData = new FormData();
+      const filename = `transcript-${Date.now()}.txt`;
+      formData.append("file", blob, filename);
+      formData.append("collection_id", "general");
+      const response = await fetch("/api/local-rag/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await response.json().catch(() => ({}))) as { filename?: string; detail?: string };
+      if (!response.ok) throw new Error(data.detail || "Import failed.");
+      setRagImportMessage(`Imported as ${data.filename ?? "transcript"} into the general notebook.`);
+    } catch (error) {
+      setRagImportMessage(error instanceof Error ? error.message : "Import failed.");
+    } finally {
+      setRagImporting(false);
     }
   }
 
@@ -810,6 +836,17 @@ export default function TranscriptWhisperClient() {
                 <div className="transcript-result-block">
                   <div className="study-kicker">Transcript</div>
                   <textarea className="study-textarea transcript-result-textarea" value={uploadResult.text} readOnly />
+                  <div className="transcript-rag-import">
+                    <button
+                      type="button"
+                      className="study-button-secondary"
+                      disabled={ragImporting}
+                      onClick={() => void importTranscriptToRag(uploadResult.text)}
+                    >
+                      {ragImporting ? "Importing…" : "Import to RAG notebook"}
+                    </button>
+                    {ragImportMessage ? <span className="transcript-rag-status">{ragImportMessage}</span> : null}
+                  </div>
                 </div>
               ) : null}
 
@@ -828,6 +865,17 @@ export default function TranscriptWhisperClient() {
                         value={processResult.text}
                         readOnly
                       />
+                      <div className="transcript-rag-import">
+                        <button
+                          type="button"
+                          className="study-button-secondary"
+                          disabled={ragImporting}
+                          onClick={() => void importTranscriptToRag(processResult.text ?? "")}
+                        >
+                          {ragImporting ? "Importing…" : "Import to RAG notebook"}
+                        </button>
+                        {ragImportMessage ? <span className="transcript-rag-status">{ragImportMessage}</span> : null}
+                      </div>
                     </div>
                   ) : null}
 

@@ -86,7 +86,12 @@ type IdeCommandId =
   | "upload-files"
   | "toggle-wrap";
 
-type CodeRunResult = {
+type PendingEdit = {
+  proposedContent: string;
+  description: string;
+};
+
+
   runtime: "python" | "javascript";
   command: string;
   stdout: string;
@@ -299,7 +304,38 @@ function extractCodeBlock(response: string) {
   return match ? match[1].trimEnd() : null;
 }
 
-function createWorkspaceFile(name: string, content: string): PracticeFile {
+const IDE_CHAT_STORAGE_PREFIX = "studyspace.ide.chat.v1.";
+
+function loadPersistedChatMessages(fileId: string): AssistantMessage[] {
+  const INTRO: AssistantMessage = {
+    id: "assistant-intro",
+    role: "assistant",
+    content: "I am ready to help with the active file.",
+  };
+  if (typeof window === "undefined") return [INTRO];
+  try {
+    const raw = window.localStorage.getItem(`${IDE_CHAT_STORAGE_PREFIX}${fileId}`);
+    if (!raw) return [INTRO];
+    const parsed = JSON.parse(raw) as AssistantMessage[];
+    if (!Array.isArray(parsed) || parsed.length === 0) return [INTRO];
+    return parsed;
+  } catch {
+    return [INTRO];
+  }
+}
+
+function persistChatMessages(fileId: string, messages: AssistantMessage[]) {
+  try {
+    window.localStorage.setItem(
+      `${IDE_CHAT_STORAGE_PREFIX}${fileId}`,
+      JSON.stringify(messages),
+    );
+  } catch {
+    // Ignore storage quota errors.
+  }
+}
+
+
   return {
     id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
@@ -360,8 +396,10 @@ export default function IdeWorkspaceClient() {
       content: "I am ready to help with the active file.",
     },
   ]);
+  const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
 
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const lastChatFileIdRef = useRef<string | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const editorStackRef = useRef<HTMLDivElement | null>(null);
@@ -485,6 +523,21 @@ export default function IdeWorkspaceClient() {
       workspace.files.find((file) => file.id === workspace.activeFileId) ?? workspace.files[0] ?? null
     );
   }, [workspace]);
+
+  // Load persisted chat messages when the active file changes.
+  useEffect(() => {
+    if (!activeFile) return;
+    if (activeFile.id === lastChatFileIdRef.current) return;
+    lastChatFileIdRef.current = activeFile.id;
+    setMessages(loadPersistedChatMessages(activeFile.id));
+    setPendingEdit(null);
+  }, [activeFile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist chat messages on every update.
+  useEffect(() => {
+    if (!activeFile) return;
+    persistChatMessages(activeFile.id, messages);
+  }, [messages, activeFile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredFiles = useMemo(() => {
     if (!workspace) {
@@ -782,6 +835,12 @@ export default function IdeWorkspaceClient() {
   function resetChat() {
     setMessages((current) => current.slice(0, 1));
     setPrompt("");
+    setPendingEdit(null);
+    if (activeFile) {
+      persistChatMessages(activeFile.id, [
+        { id: "assistant-intro", role: "assistant", content: "I am ready to help with the active file." },
+      ]);
+    }
   }
 
   function beginResize(target: ResizeTarget, event: ReactMouseEvent<HTMLDivElement>) {
@@ -1162,15 +1221,15 @@ export default function IdeWorkspaceClient() {
         const nextContent = extractCodeBlock(assistantResponse);
 
         if (nextContent) {
-          updateActiveFileContent(nextContent);
           setMessages((current) => [
             ...current,
             {
               id: `assistant-${Date.now()}`,
               role: "assistant",
-              content: `Applied the edit to ${activeFile.name}.`,
+              content: `Proposed edit for **${activeFile.name}** — review below and accept or reject.`,
             },
           ]);
+          setPendingEdit({ proposedContent: nextContent, description: value });
           return;
         }
       }
@@ -2106,6 +2165,52 @@ export default function IdeWorkspaceClient() {
               </div>
 
               <div className="ide-assistant-composer">
+                {pendingEdit ? (
+                  <div className="ide-pending-edit">
+                    <div className="ide-pending-edit-header">
+                      <PencilLine className="h-4 w-4" />
+                      <span className="ide-pending-edit-title">Proposed edit — {pendingEdit.description}</span>
+                    </div>
+                    <pre className="ide-pending-edit-preview">{pendingEdit.proposedContent.slice(0, 400)}{pendingEdit.proposedContent.length > 400 ? "\n..." : ""}</pre>
+                    <div className="ide-pending-edit-actions">
+                      <button
+                        type="button"
+                        className="study-button-primary"
+                        onClick={() => {
+                          updateActiveFileContent(pendingEdit.proposedContent);
+                          setMessages((current) => [
+                            ...current,
+                            {
+                              id: `assistant-accept-${Date.now()}`,
+                              role: "assistant",
+                              content: `✓ Edit applied to ${activeFile?.name ?? "the file"}.`,
+                            },
+                          ]);
+                          setPendingEdit(null);
+                        }}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        className="study-button-secondary"
+                        onClick={() => {
+                          setMessages((current) => [
+                            ...current,
+                            {
+                              id: `assistant-reject-${Date.now()}`,
+                              role: "assistant",
+                              content: "Edit discarded.",
+                            },
+                          ]);
+                          setPendingEdit(null);
+                        }}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="ide-assistant-modebar">
                   <button
                     type="button"

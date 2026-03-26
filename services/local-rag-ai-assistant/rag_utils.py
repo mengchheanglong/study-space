@@ -12,11 +12,11 @@ if TYPE_CHECKING:
     from langchain_core.documents import Document
     from langchain_core.vectorstores import VectorStoreRetriever
 
-QUERY_REWRITES: tuple[tuple[str, str], ...] = (
-    (r"\bdata signature\b", "digital signature"),
-    (r"\bdatasignature\b", "digital signature"),
-    (r"\bcyber security\b", "network security"),
-)
+# Extend this tuple with (regex_pattern, replacement) pairs to add domain-specific
+# synonym rewrites. The rewrites are applied case-insensitively before retrieval so
+# that both the original phrasing and the rewritten variant are searched.
+# Example: (r"\bcyber security\b", "network security")
+QUERY_REWRITES: tuple[tuple[str, str], ...] = ()
 
 
 def build_query_variants(question: str) -> list[str]:
