@@ -280,6 +280,19 @@ a {
   padding: 1rem;
 }
 
+.transcript-rag-import {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.transcript-rag-status {
+  font-size: 0.78rem;
+  color: var(--color-text-muted, #64748b);
+}
+
 .transcript-status-row {
   display: flex;
   align-items: center;
@@ -596,6 +609,48 @@ html[data-theme="dark"] .study-button-secondary {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.ide-pending-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid rgba(203, 213, 225, 0.68);
+  border-radius: 0.65rem;
+  background: rgba(248, 250, 252, 0.9);
+  padding: 0.75rem;
+}
+
+.ide-pending-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+}
+
+.ide-pending-edit-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ide-pending-edit-preview {
+  font-size: 0.7rem;
+  font-family: monospace;
+  background: rgba(241, 245, 249, 0.9);
+  border-radius: 0.4rem;
+  padding: 0.5rem;
+  overflow: auto;
+  max-height: 120px;
+  white-space: pre;
+  color: var(--text-secondary, #475569);
+}
+
+.ide-pending-edit-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .ide-assistant-modebar {
