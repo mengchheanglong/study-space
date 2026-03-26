@@ -4,6 +4,10 @@ ingest.py - Document ingestion pipeline.
 Loads documents from a folder, splits them into chunks, embeds with
 the configured embedding model via Ollama, and stores them in a local
 Qdrant vector store.
+
+Incremental ingestion helpers (``ingest_file_incremental``,
+``remove_source_from_store``) allow adding and deleting individual
+documents without rebuilding the entire collection.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from langchain_ollama import OllamaEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
+from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
 
 from config import ALLOWED_EXTENSIONS, CHUNK_OVERLAP, CHUNK_SIZE, EMBED_MODEL
 from ollama_utils import resolve_ollama_model
@@ -172,12 +177,82 @@ def remove_source_from_store(
     qdrant_dir: str = QDRANT_DIR,
     qdrant_collection: str = QDRANT_COLLECTION,
 ) -> int:
-    """Source-level deletion is handled through full reindexing for now."""
-    logger.info(
-        "Source-level deletion for '%s' defers to full collection reindex in Qdrant.",
-        source_path,
-    )
-    return 0
+    """Delete all vectors whose source metadata matches *source_path*.
+
+    Uses Qdrant's payload filter delete so only the vectors for the given
+    file are removed — the rest of the collection is left intact.  Returns
+    the number of points deleted (best-effort; returns 0 on any error).
+    """
+    client = _get_qdrant_client(qdrant_dir)
+    try:
+        if not client.collection_exists(qdrant_collection):
+            return 0
+
+        # LangChain stores document metadata in the Qdrant payload under the
+        # key "metadata", so the source field lives at "metadata.source".
+        source_filter = Filter(
+            must=[
+                FieldCondition(
+                    key="metadata.source",
+                    match=MatchValue(value=source_path),
+                )
+            ]
+        )
+
+        # Count before deletion so we can report how many were removed.
+        count_before = client.count(
+            collection_name=qdrant_collection,
+            count_filter=source_filter,
+            exact=True,
+        ).count
+
+        if count_before == 0:
+            logger.info(
+                "No vectors found for source '%s' in collection '%s'.",
+                source_path,
+                qdrant_collection,
+            )
+            return 0
+
+        client.delete(
+            collection_name=qdrant_collection,
+            points_selector=FilterSelector(filter=source_filter),
+        )
+        logger.info(
+            "Deleted %d vectors for source '%s' from collection '%s'.",
+            count_before,
+            source_path,
+            qdrant_collection,
+        )
+        return count_before
+    except Exception as exc:
+        logger.warning(
+            "Failed to delete vectors for '%s': %s. Falling back to full reindex.",
+            source_path,
+            exc,
+        )
+        return 0
+    finally:
+        client.close()
+
+
+def ingest_file_incremental(
+    file_path: str,
+    qdrant_dir: str = QDRANT_DIR,
+    qdrant_collection: str = QDRANT_COLLECTION,
+) -> int:
+    """Incrementally add or replace a single file in an existing Qdrant collection.
+
+    1. Removes any existing vectors for *file_path* (by source filter).
+    2. Loads, splits, and embeds the file.
+    3. Adds the new chunks to the collection without touching other sources.
+
+    Returns the number of new chunks added.
+    """
+    # Remove old vectors for this source first (no-op if none exist).
+    remove_source_from_store(file_path, qdrant_dir, qdrant_collection)
+
+    return ingest_single_file(file_path, qdrant_dir, qdrant_collection)
 
 
 def main() -> None:

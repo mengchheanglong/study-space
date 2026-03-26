@@ -45,7 +45,7 @@ from config import (
     LLM_MODEL,
     MAX_UPLOAD_BYTES,
 )
-from ingest import ingest_documents
+from ingest import ingest_documents, ingest_file_incremental, remove_source_from_store
 from rag_pipeline import build_rag_runtime
 from rag_utils import normalize_question, retrieve_context, retrieve_documents
 
@@ -270,6 +270,40 @@ def reingest_collection(collection_id: str) -> int:
         qdrant_collection=get_collection_vector_name(collection_id),
         reset_store=True,
     )
+
+
+def ingest_file_into_collection(collection_id: str, file_path: str) -> int:
+    """Incrementally add (or replace) a single file in a collection's vector store.
+
+    This avoids a full collection re-index when only one file has changed.
+    The collection runtime cache is invalidated so the next query picks up
+    the new vectors.
+    """
+    clear_collection_runtime(collection_id)
+    return ingest_file_incremental(
+        file_path=file_path,
+        qdrant_dir=str(get_collection_qdrant_dir(collection_id)),
+        qdrant_collection=get_collection_vector_name(collection_id),
+    )
+
+
+def remove_file_from_collection(collection_id: str, file_path: str) -> int:
+    """Remove all vectors for a single source file from the collection's vector store.
+
+    Returns the number of vectors deleted.  Falls back to a full re-index
+    when the filter-based delete fails (e.g. collection is corrupt).
+    """
+    clear_collection_runtime(collection_id)
+    deleted = remove_source_from_store(
+        source_path=file_path,
+        qdrant_dir=str(get_collection_qdrant_dir(collection_id)),
+        qdrant_collection=get_collection_vector_name(collection_id),
+    )
+    if deleted == 0:
+        # remove_source_from_store already logged a warning; fall back to a
+        # full reindex so the document is definitely gone.
+        reingest_collection(collection_id)
+    return deleted
 
 
 # ── Artifact helpers ──────────────────────────────────────────────
@@ -686,7 +720,7 @@ async def upload_document(
                 )
 
         file_path.write_bytes(content)
-        chunks_added = reingest_collection(collection_id)
+        chunks_added = ingest_file_into_collection(collection_id, str(file_path))
 
         return UploadResponse(
             filename=filename,
@@ -718,7 +752,7 @@ async def delete_collection_document(collection_id: str, document_name: str):
         raise HTTPException(status_code=404, detail="Document not found.")
 
     path.unlink()
-    reingest_collection(collection_id)
+    remove_file_from_collection(collection_id, str(path))
     documents = list_available_documents(collection_id)
     return DocumentListResponse(documents=[DocumentRecord(**item) for item in documents])
 
